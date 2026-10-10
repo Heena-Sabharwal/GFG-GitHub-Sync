@@ -1,10 +1,10 @@
-# GFG GitHub Sync 🚀
+# GFG GitHub Sync 
 
 **A personal Chrome extension that syncs GeeksforGeeks coding solutions directly to GitHub.**
 
 GFG GitHub Sync simplifies maintaining a coding portfolio by extracting solutions from the GeeksforGeeks code editor and uploading them to a GitHub repository. It uses the GitHub REST API to create new solution files or update existing ones, keeping coding practice organized in one place.
 
-## ✨ Features
+## Features
 
 - **Solution Extraction:** Extracts source code from the GeeksforGeeks editor.
 - **GitHub Integration:** Uploads solutions directly to a GitHub repository using the GitHub REST API.
@@ -13,7 +13,7 @@ GFG GitHub Sync simplifies maintaining a coding portfolio by extracting solution
 - **Automatic File Naming:** Generates filenames from problem titles for easier organization.
 - **Simple Interface:** Provides a popup to save the GitHub token and trigger synchronization.
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Language:** JavaScript
 - **Browser Extension:** Chrome Extension Manifest V3
@@ -21,7 +21,7 @@ GFG GitHub Sync simplifies maintaining a coding portfolio by extracting solution
 - **Web Technologies:** HTML, CSS
 - **Data Encoding:** Base64
 
-## ⚙️ How It Works
+## How It Works
 
 1. Open a coding problem on GeeksforGeeks.
 2. Write your solution in the code editor.
@@ -31,18 +31,7 @@ GFG GitHub Sync simplifies maintaining a coding portfolio by extracting solution
 6. The extension extracts the problem title and source code.
 7. It creates or updates the corresponding `.cpp` file in the configured GitHub repository.
 
-## 📂 Project Structure
-
-```text
-GFG-GitHub/
-├── manifest.json   # Extension configuration and permissions
-├── popup.html      # Extension popup interface
-├── popup.js        # Code extraction and GitHub synchronization
-├── content.js      # Content script for GeeksforGeeks pages
-└── README.md       # Project documentation
-```
-
-## 🚀 Installation
+## Installation
 
 ### 1. Clone the repository
 
@@ -65,7 +54,7 @@ git clone https://github.com/Heena-Sabharwal/GFG-GitHub-Sync.git
 
 **Security note:** Never commit your personal access token to the repository or share it publicly. The extension stores it in Chrome's local extension storage.
 
-## 📁 Output
+## Output
 
 Solutions are stored in the configured GitHub repository under the `GFG/` directory.
 
@@ -78,11 +67,11 @@ GeekforGeeks-Solutions/
     └── Problem-Name.cpp
 ```
 
-## 🎯 Motivation
+## Motivation
 
 I wanted a simpler and more reliable way to maintain my GeeksforGeeks solutions on GitHub. Instead of manually copying code into files and pushing each solution, I built a personal browser extension that connects the coding environment directly to my repository.
 
-## 🔮 Future Improvements
+## Future Improvements
 
 - Detect accepted submissions and trigger synchronization automatically.
 - Support multiple programming languages.
@@ -90,7 +79,7 @@ I wanted a simpler and more reliable way to maintain my GeeksforGeeks solutions 
 - Add solution metadata, including problem links and difficulty.
 - Improve sync history and error reporting.
 
-## 👩‍💻 Author
+## Author
 
 **Heena Sabharwal**
 
@@ -98,4 +87,4 @@ I wanted a simpler and more reliable way to maintain my GeeksforGeeks solutions 
 
 ---
 
-*Built to make coding practice easier to track, organize, and share.* 💻
+*Built to make coding practice easier to track, organize, and share.* 

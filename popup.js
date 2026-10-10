@@ -1,23 +1,192 @@
+
 const problemElement = document.getElementById("problem");
 const statusElement = document.getElementById("status");
 const syncButton = document.getElementById("syncButton");
-
 const tokenInput = document.getElementById("token");
 const saveTokenButton = document.getElementById("saveToken");
 
+const historyElement = document.getElementById("history");
+const updateReview = document.getElementById("updateReview");
+const reviewDescription = document.getElementById("reviewDescription");
+const existingCodeElement = document.getElementById("existingCode");
+const newCodeElement = document.getElementById("newCode");
+const confirmUpdateButton = document.getElementById("confirmUpdate");
+const cancelUpdateButton = document.getElementById("cancelUpdate");
 
-// Check whether token is already saved
-chrome.storage.local.get(["githubToken"], (result) => {
+const REPO_OWNER = "Heena-Sabharwal";
+const REPO_NAME = "GeekforGeeks-Solutions";
+const BRANCH = "main";
+const HISTORY_LIMIT = 50;
+
+let pendingUpdate = null;
+
+// -------------------------
+// GitHub URL helpers
+// -------------------------
+
+function getGitHubFileUrl(filePath) {
+    const encodedPath = filePath
+        .split("/")
+        .map(encodeURIComponent)
+        .join("/");
+
+    return `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodedPath}`;
+}
+
+// -------------------------
+// Code comparison helpers
+// -------------------------
+
+function normalizeCode(code) {
+    return code
+        .replace(/\r\n/g, "\n")
+        .replace(/\n+$/, "");
+}
+
+function encodeBase64(text) {
+    const bytes = new TextEncoder().encode(text);
+    let binary = "";
+
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+
+    return btoa(binary);
+}
+
+function decodeBase64(base64) {
+    const binary = atob(base64.replace(/\s/g, ""));
+    const bytes = Uint8Array.from(
+        binary,
+        character => character.charCodeAt(0)
+    );
+
+    return new TextDecoder().decode(bytes);
+}
+
+async function readResponse(response) {
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(
+            data.message || `GitHub API error: ${response.status}`
+        );
+    }
+
+    return data;
+}
+
+
+async function checkRepositoryAccess(token) {
+    const response = await fetch(
+        `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`,
+        {
+            headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: "application/vnd.github+json"
+            }
+        }
+    );
+
+    await readResponse(response);
+}
+
+// -------------------------
+// Sync history
+// -------------------------
+
+async function recordHistory(entry) {
+    const result = await chrome.storage.local.get(["syncHistory"]);
+    const history = Array.isArray(result.syncHistory)
+        ? result.syncHistory
+        : [];
+
+    history.unshift({
+        id: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        ...entry
+    });
+
+    await chrome.storage.local.set({
+        syncHistory: history.slice(0, HISTORY_LIMIT)
+    });
+
+    await renderHistory();
+}
+
+async function renderHistory() {
+    const result = await chrome.storage.local.get(["syncHistory"]);
+    const history = Array.isArray(result.syncHistory)
+        ? result.syncHistory
+        : [];
+
+    historyElement.replaceChildren();
+
+    if (history.length === 0) {
+        const emptyMessage = document.createElement("p");
+        emptyMessage.className = "muted";
+        emptyMessage.textContent = "No sync history yet.";
+        historyElement.appendChild(emptyMessage);
+        return;
+    }
+
+    for (const item of history.slice(0, 10)) {
+        const container = document.createElement("div");
+        container.className = "history-item";
+
+        const title = document.createElement("strong");
+        title.textContent = item.title || "Unknown problem";
+
+        const details = document.createElement("p");
+        details.textContent =
+            `${item.status} · ${new Date(item.timestamp).toLocaleString()}`;
+
+        const path = document.createElement("p");
+        path.className = "muted";
+        path.textContent = item.filePath || "";
+
+        container.append(title, details, path);
+
+        if (item.url && isGitHubUrl(item.url)) {
+            const link = document.createElement("a");
+            link.href = item.url;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.textContent = "Open on GitHub";
+            container.appendChild(link);
+        }
+
+        if (item.message) {
+            const message = document.createElement("p");
+            message.textContent = item.message;
+            container.appendChild(message);
+        }
+
+        historyElement.appendChild(container);
+    }
+}
+
+function isGitHubUrl(value) {
+    try {
+        return new URL(value).hostname === "github.com";
+    } catch {
+        return false;
+    }
+}
+
+// -------------------------
+// Token management
+// -------------------------
+
+async function loadSavedToken() {
+    const result = await chrome.storage.local.get(["githubToken"]);
 
     if (result.githubToken) {
         statusElement.textContent = "GitHub token is saved.";
     }
-});
+}
 
-
-// Save GitHub token
 saveTokenButton.addEventListener("click", async () => {
-
     const token = tokenInput.value.trim();
 
     if (!token) {
@@ -25,356 +194,407 @@ saveTokenButton.addEventListener("click", async () => {
         return;
     }
 
-    await chrome.storage.local.set({
-        githubToken: token
-    });
-
-    tokenInput.value = "";
-
-    statusElement.textContent = "GitHub token saved.";
+    try {
+        await chrome.storage.local.set({ githubToken: token });
+        tokenInput.value = "";
+        statusElement.textContent = "GitHub token saved.";
+    } catch (error) {
+        statusElement.textContent =
+            "Could not save token: " + error.message;
+    }
 });
 
+// -------------------------
+// Extract problem from GFG
+// -------------------------
 
-// Sync button
-syncButton.addEventListener("click", async () => {
+async function extractProblem(tab) {
+    const results = await chrome.scripting.executeScript({
+        target: {
+            tabId: tab.id,
+            allFrames: true
+        },
 
-    console.log("SYNC BUTTON CLICKED");
+        func: () => {
+            let code = "";
+            let source = "";
 
-    statusElement.textContent = "Reading GFG problem...";
+            let title = document.title
+                .replace(/\s*[| -]\s*GeeksforGeeks\s*$/i, "")
+                .trim();
 
-    // Get GitHub token
-    const tokenData =
-        await chrome.storage.local.get(["githubToken"]);
+            const ace = document.querySelector(".ace_editor");
 
-    const token = tokenData.githubToken;
+            if (ace) {
+                const lines = ace.querySelector(".ace_text-layer");
 
-    if (!token) {
-        statusElement.textContent =
-            "GitHub token not found.";
+                if (lines) {
+                    code = lines.innerText.trim();
+                    source = "ACE DOM";
+                }
+            }
 
-        return;
-    }
+            if (!code) {
+                const lines = document.querySelector(".view-lines");
 
+                if (lines) {
+                    code = lines.innerText.trim();
+                    source = "Monaco DOM";
+                }
+            }
 
-    // Get current tab
-    const [tab] = await chrome.tabs.query({
-        active: true,
-        currentWindow: true
+            if (!code) {
+                const editor = document.querySelector(".CodeMirror");
+                const lines = editor?.querySelector(".CodeMirror-code");
+
+                if (lines) {
+                    code = lines.innerText.trim();
+                    source = "CodeMirror DOM";
+                }
+            }
+
+            if (!code) {
+                const textareas = document.querySelectorAll("textarea");
+
+                for (const textarea of textareas) {
+                    if (textarea.value.trim()) {
+                        code = textarea.value.trim();
+                        source = "Textarea";
+                        break;
+                    }
+                }
+            }
+
+            if (!title) {
+                title = document.querySelector("h1")?.innerText.trim()
+                    || "Unknown problem";
+            }
+
+            return {
+                title,
+                code,
+                source,
+                url: window.location.href
+            };
+        }
     });
 
+    return results.find(result =>
+        result.result?.code?.trim()
+    )?.result;
+}
+
+// -------------------------
+// Check GitHub file
+// -------------------------
+
+async function getExistingFile(fileUrl, token) {
+    const response = await fetch(fileUrl, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/vnd.github+json"
+        }
+    });
+
+    // Only a confirmed 404 means the file is absent.
+    // Authentication, permission, and network errors must not
+    // be treated as evidence that the file does not exist.
+    if (response.status === 404) {
+        return null;
+    }
+
+    const file = await readResponse(response);
+
+    if (!file.content || !file.sha) {
+        throw new Error(
+            "Could not retrieve the existing file content and SHA."
+        );
+    }
+
+    return {
+        sha: file.sha,
+        content: decodeBase64(file.content),
+        url: file.html_url
+    };
+}
+
+// -------------------------
+// Display safe-update preview
+// -------------------------
+
+function showUpdateReview(problem, filePath, fileUrl, token, existingFile) {
+    pendingUpdate = {
+        problem,
+        filePath,
+        fileUrl,
+        token,
+        existingFile
+    };
+
+    reviewDescription.textContent =
+        `A file named "${filePath}" already exists. ` +
+        "Compare the versions before confirming the overwrite.";
+
+    existingCodeElement.textContent = existingFile.content;
+    newCodeElement.textContent = problem.code;
+
+    updateReview.hidden = false;
+    syncButton.disabled = true;
+
+    statusElement.textContent =
+        "Changes detected. Review the code before overwriting.";
+}
+
+function hideUpdateReview() {
+    pendingUpdate = null;
+    updateReview.hidden = true;
+    syncButton.disabled = false;
+}
+
+// -------------------------
+// Upload new or confirmed solution
+// -------------------------
+
+async function uploadSolution(attempt, existingFile) {
+    const { problem, filePath, fileUrl, token } = attempt;
+
+    const uploadData = {
+        message: existingFile
+            ? `Update solution: ${problem.title}`
+            : `Add solution: ${problem.title}`,
+        content: encodeBase64(problem.code),
+        branch: BRANCH
+    };
+
+    if (existingFile) {
+        uploadData.sha = existingFile.sha;
+    }
+
+    const response = await fetch(fileUrl, {
+        method: "PUT",
+        headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/vnd.github+json",
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(uploadData)
+    });
+
+    const data = await readResponse(response);
+    const action = existingFile ? "updated" : "created";
+
+    await recordHistory({
+        title: problem.title,
+        filePath,
+        status: action,
+        url: data.content?.html_url || existingFile?.url || "",
+        source: problem.source,
+        message: existingFile
+            ? "Existing solution updated."
+            : "New solution uploaded."
+    });
+
+    statusElement.textContent = existingFile
+        ? "Solution updated successfully!"
+        : "Solution uploaded successfully!";
+}
+
+// -------------------------
+// Main sync workflow
+// -------------------------
+
+syncButton.addEventListener("click", async () => {
+    let attempt = null;
+    syncButton.disabled = true;
+    statusElement.textContent = "Reading GFG solution...";
 
     try {
+        const tokenData = await chrome.storage.local.get(["githubToken"]);
+        const token = tokenData.githubToken;
 
-        // Extract problem information from GFG
-        const results =
-            await chrome.scripting.executeScript({
+        if (!token) {
+            throw new Error("Save your GitHub token first.");
+        }
 
-                target: {
-                    tabId: tab.id,
-                    allFrames: true
-                },
+        statusElement.textContent = "Checking repository access...";
+        await checkRepositoryAccess(token);
 
-                func: () => {
+        const [tab] = await chrome.tabs.query({
+            active: true,
+            currentWindow: true
+        });
 
-                    let code = "";
-                    let source = "";
+        if (!tab?.id || !tab.url ||
+            !/^https:\/\/(www\.)?geeksforgeeks\.org\//i.test(tab.url)) {
+            throw new Error(
+                "Open a GeeksforGeeks problem page before syncing."
+            );
+        }
 
-                    // -------------------------
-                    // Problem title
-                    // -------------------------
+        const problem = await extractProblem(tab);
 
-                    let title = document.title;
+        if (!problem?.code?.trim()) {
+            throw new Error(
+                "Could not extract solution code from the editor."
+            );
+        }
 
-                    title = title
-                        .replace(" | GeeksforGeeks", "")
-                        .replace(" - GeeksforGeeks", "")
-                        .trim();
+        if (!problem.title || problem.title === "Unknown problem") {
+            throw new Error("Could not identify the problem title.");
+        }
 
+        problemElement.textContent = problem.title;
 
-                    // -------------------------
-                    // ACE editor
-                    // -------------------------
+        const fileName = problem.title
+            .replace(/[^a-zA-Z0-9]+/g, "-")
+            .replace(/^-|-$/g, "") + ".cpp";
 
-                    const ace =
-                        document.querySelector(".ace_editor");
+        const filePath = "GFG/" + fileName;
+        const fileUrl = getGitHubFileUrl(filePath);
 
-                    if (ace) {
+        attempt = {
+            problem,
+            filePath,
+            fileUrl,
+            token
+        };
 
-                        const lines =
-                            ace.querySelector(".ace_text-layer");
+        statusElement.textContent = "Checking existing GitHub solution...";
 
-                        if (lines) {
+        const existingFile = await getExistingFile(fileUrl, token);
 
-                            code =
-                                lines.innerText.trim();
+        if (existingFile) {
+            const oldCode = normalizeCode(existingFile.content);
+            const newCode = normalizeCode(problem.code);
 
-                            source = "ACE DOM";
-                        }
-                    }
+            if (oldCode === newCode) {
+                await recordHistory({
+                    title: problem.title,
+                    filePath,
+                    status: "unchanged",
+                    url: existingFile.url,
+                    source: problem.source,
+                    message: "No changes detected. Commit skipped."
+                });
 
+                statusElement.textContent =
+                    "Solution is unchanged. No upload needed.";
+                return;
+            }
 
-                    // -------------------------
-                    // Monaco editor
-                    // -------------------------
-
-                    if (!code) {
-
-                        const monacoLines =
-                            document.querySelector(".view-lines");
-
-                        if (monacoLines) {
-
-                            code =
-                                monacoLines.innerText.trim();
-
-                            source = "Monaco DOM";
-                        }
-                    }
-
-
-                    // -------------------------
-                    // CodeMirror
-                    // -------------------------
-
-                    if (!code) {
-
-                        const codeMirror =
-                            document.querySelector(".CodeMirror");
-
-                        if (codeMirror) {
-
-                            const lines =
-                                codeMirror.querySelector(
-                                    ".CodeMirror-code"
-                                );
-
-                            if (lines) {
-
-                                code =
-                                    lines.innerText.trim();
-
-                                source = "CodeMirror DOM";
-                            }
-                        }
-                    }
-
-
-                    // -------------------------
-                    // Textarea
-                    // -------------------------
-
-                    if (!code) {
-
-                        const textareas =
-                            document.querySelectorAll(
-                                "textarea"
-                            );
-
-                        for (const textarea of textareas) {
-
-                            if (textarea.value.trim()) {
-
-                                code =
-                                    textarea.value.trim();
-
-                                source = "Textarea";
-
-                                break;
-                            }
-                        }
-                    }
-
-
-                    return {
-                        title: title,
-                        code: code,
-                        source: source,
-                        url: window.location.href
-                    };
-                }
-            });
-
-
-        const found = results.find(
-            result =>
-                result.result &&
-                result.result.code
-        );
-
-
-        if (!found) {
-
-            statusElement.textContent =
-                "Could not find solution code.";
+            showUpdateReview(
+                problem,
+                filePath,
+                fileUrl,
+                token,
+                existingFile
+            );
 
             return;
         }
 
-
-        const problem = found.result;
-
-        console.log("FOUND PROBLEM:", problem);
-
-
-        problemElement.textContent =
-            problem.title;
-
-        statusElement.textContent =
-            "Code found. Uploading to GitHub...";
-
-
-        // -------------------------
-        // Create GitHub filename
-        // -------------------------
-
-        const fileName =
-            problem.title
-                .replace(/[^a-zA-Z0-9]+/g, "-")
-                .replace(/^-|-$/g, "")
-                + ".cpp";
-
-
-        const filePath =
-            "GFG/" + fileName;
-
-
-        // -------------------------
-        // Convert code to Base64
-        // -------------------------
-
-        const base64Code =
-            btoa(
-                unescape(
-                    encodeURIComponent(problem.code)
-                )
-            );
-
-
-        // -------------------------
-        // GitHub API
-        // -------------------------
-
-        // GitHub API
-
-        const githubUrl =
-            `https://api.github.com/repos/Heena-Sabharwal/GeekforGeeks-Solutions/contents/${encodeURIComponent(filePath)}`;
-
-
-        // Check if the file already exists
-        const existingResponse =
-            await fetch(githubUrl, {
-
-                method: "GET",
-
-                headers: {
-
-                    "Authorization": `Bearer ${token}`,
-
-                    "Accept": "application/vnd.github+json"
-                }
-            });
-
-
-        let existingFile = null;
-
-        if (existingResponse.ok) {
-
-            existingFile =
-                await existingResponse.json();
-
-            console.log(
-                "Existing GitHub file found:",
-                existingFile
-            );
-        }
-
-
-        // Data for GitHub
-        const uploadData = {
-
-            message:
-                `Add solution: ${problem.title}`,
-
-            content:
-                base64Code,
-
-            branch:
-                "main"
-        };
-
-
-        // If file already exists, include its SHA
-        if (existingFile) {
-
-            uploadData.sha =
-                existingFile.sha;
-        }
-
-
-        // Upload the file
-        const response =
-            await fetch(githubUrl, {
-
-                method: "PUT",
-
-                headers: {
-
-                    "Authorization": `Bearer ${token}`,
-
-                    "Accept":
-                        "application/vnd.github+json",
-
-                    "Content-Type":
-                        "application/json"
-                },
-
-                body:
-                    JSON.stringify(uploadData)
-            });
-
-
-        const data =
-            await response.json();
-
-
-        console.log(
-            "GITHUB RESPONSE:",
-            data
-        );
-
-
-        if (response.ok) {
-
-            statusElement.textContent =
-                existingFile
-                    ? "Solution updated on GitHub!"
-                    : "Successfully uploaded to GitHub!";
-
-            console.log(
-                "GitHub file:",
-                data.content?.html_url
-            );
-
-        } else {
-
-            statusElement.textContent =
-                "GitHub error: " +
-                (data.message || response.status);
-
-            console.error(
-                "GitHub upload failed:",
-                data
-            );
-        }
+        statusElement.textContent = "Uploading new solution...";
+        await uploadSolution(attempt, null);
 
     } catch (error) {
+        statusElement.textContent = "Sync failed: " + error.message;
 
-        console.error(
-            "SYNC ERROR:",
-            error
-        );
+        if (attempt) {
+            try {
+                await recordHistory({
+                    title: attempt.problem.title,
+                    filePath: attempt.filePath,
+                    status: "failed",
+                    message: error.message
+                });
+            } catch (historyError) {
+                console.error("Could not save sync history:", historyError);
+            }
+        }
 
-        statusElement.textContent =
-            "Error: " + error.message;
+        console.error("Sync error:", error);
+
+    } finally {
+        syncButton.disabled = Boolean(pendingUpdate);
     }
 });
+
+// -------------------------
+// Confirm or cancel overwrite
+// -------------------------
+
+confirmUpdateButton.addEventListener("click", async () => {
+    if (!pendingUpdate) {
+        return;
+    }
+
+    const attempt = pendingUpdate;
+    const existingFile = attempt.existingFile;
+
+    confirmUpdateButton.disabled = true;
+    cancelUpdateButton.disabled = true;
+    statusElement.textContent = "Updating GitHub solution...";
+
+    try {
+        await uploadSolution(attempt, existingFile);
+        hideUpdateReview();
+
+    } catch (error) {
+        statusElement.textContent =
+            "Update failed: " + error.message;
+
+        try {
+            await recordHistory({
+                title: attempt.problem.title,
+                filePath: attempt.filePath,
+                status: "failed",
+                url: existingFile.url,
+                message: error.message
+            });
+        } catch (historyError) {
+            console.error("Could not save sync history:", historyError);
+        }
+
+        // Keep the review open so the user can inspect the
+        // solution and decide what to do next.
+        console.error("Update error:", error);
+
+    } finally {
+        confirmUpdateButton.disabled = false;
+        cancelUpdateButton.disabled = false;
+    }
+});
+
+cancelUpdateButton.addEventListener("click", async () => {
+    if (!pendingUpdate) {
+        return;
+    }
+
+    const attempt = pendingUpdate;
+
+    hideUpdateReview();
+
+    try {
+        await recordHistory({
+            title: attempt.problem.title,
+            filePath: attempt.filePath,
+            status: "cancelled",
+            url: attempt.existingFile.url,
+            message: "Overwrite cancelled by user."
+        });
+
+        statusElement.textContent =
+            "Update cancelled. Existing GitHub file was not changed.";
+
+    } catch (error) {
+        statusElement.textContent =
+            "Update cancelled, but history could not be saved.";
+    }
+});
+
+// -------------------------
+// Initialize popup
+// -------------------------
+
+loadSavedToken().catch(console.error);
+renderHistory().catch(console.error);

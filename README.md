@@ -1,4 +1,4 @@
-# GFG GitHub Sync 
+# GFG GitHub Sync (in progress)
 
 **A personal Chrome extension that syncs GeeksforGeeks coding solutions directly to GitHub.**
 

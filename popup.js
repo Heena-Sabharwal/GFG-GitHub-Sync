@@ -13,6 +13,15 @@ const newCodeElement = document.getElementById("newCode");
 const confirmUpdateButton = document.getElementById("confirmUpdate");
 const cancelUpdateButton = document.getElementById("cancelUpdate");
 
+
+const repoOwnerInput = document.getElementById("repoOwner");
+const repoNameInput = document.getElementById("repoName");
+const repoBranchInput = document.getElementById("repoBranch");
+const repoFolderInput = document.getElementById("repoFolder");
+const saveSettingsButton = document.getElementById("saveSettings");
+const settingsStatus = document.getElementById("settingsStatus");
+
+
 const REPO_OWNER = "Heena-Sabharwal";
 const REPO_NAME = "GeekforGeeks-Solutions";
 const BRANCH = "main";
@@ -185,6 +194,61 @@ async function loadSavedToken() {
         statusElement.textContent = "GitHub token is saved.";
     }
 }
+
+
+const DEFAULT_SETTINGS = {
+    repoOwner: "Heena-Sabharwal",
+    repoName: "GeekforGeeks-Solutions",
+    repoBranch: "main",
+    repoFolder: "GFG"
+};
+
+async function loadSavedSettings() {
+    const data = await chrome.storage.local.get(["repoSettings"]);
+    const settings = {
+        ...DEFAULT_SETTINGS,
+        ...(data.repoSettings || {})
+    };
+
+    repoOwnerInput.value = settings.repoOwner;
+    repoNameInput.value = settings.repoName;
+    repoBranchInput.value = settings.repoBranch;
+    repoFolderInput.value = settings.repoFolder;
+}
+
+saveSettingsButton.addEventListener("click", async () => {
+    const settings = {
+        repoOwner: repoOwnerInput.value.trim(),
+        repoName: repoNameInput.value.trim(),
+        repoBranch: repoBranchInput.value.trim(),
+        repoFolder: repoFolderInput.value.trim()
+    };
+
+    if (
+        !settings.repoOwner ||
+        !settings.repoName ||
+        !settings.repoBranch
+    ) {
+        settingsStatus.textContent =
+            "Username, repository, and branch are required.";
+        return;
+    }
+
+    settings.repoFolder = settings.repoFolder.replace(/^\/+|\/+$/g, "");
+
+    try {
+        await chrome.storage.local.set({
+            repoSettings: settings
+        });
+
+        repoFolderInput.value = settings.repoFolder;
+        settingsStatus.textContent = "Settings saved successfully!";
+    } catch (error) {
+        settingsStatus.textContent =
+            "Could not save settings: " + error.message;
+    }
+});
+
 
 saveTokenButton.addEventListener("click", async () => {
     const token = tokenInput.value.trim();
@@ -598,3 +662,5 @@ cancelUpdateButton.addEventListener("click", async () => {
 
 loadSavedToken().catch(console.error);
 renderHistory().catch(console.error);
+loadSavedSettings().catch(console.error);
+

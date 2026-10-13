@@ -129,6 +129,45 @@
     >
 
     <button id="saveToken">Save Token</button>
+    
+    <hr>
+
+    <h3>GitHub Repository Settings</h3>
+
+    <label for="repoOwner">GitHub Username / Owner</label>
+    <input
+        type="text"
+        id="repoOwner"
+        placeholder="Your GitHub username"
+    />
+
+    <label for="repoName">Repository Name</label>
+    <input
+        type="text"
+        id="repoName"
+        placeholder="Your repository name"
+    />
+
+    <label for="repoBranch">Branch</label>
+    <input
+        type="text"
+        id="repoBranch"
+        placeholder="main"
+    />
+
+    <label for="repoFolder">Destination Folder</label>
+    <input
+        type="text"
+        id="repoFolder"
+        placeholder="GFG"
+    />
+
+    <button id="saveSettings">Save Settings</button>
+
+    <p id="settingsStatus"></p>
+
+    <hr>
+
     <button id="syncButton">Sync to GitHub</button>
 
     <p id="status" role="status" aria-live="polite"></p>

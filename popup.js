@@ -21,10 +21,6 @@ const repoFolderInput = document.getElementById("repoFolder");
 const saveSettingsButton = document.getElementById("saveSettings");
 const settingsStatus = document.getElementById("settingsStatus");
 
-
-const REPO_OWNER = "Heena-Sabharwal";
-const REPO_NAME = "GeekforGeeks-Solutions";
-const BRANCH = "main";
 const HISTORY_LIMIT = 50;
 
 let pendingUpdate = null;
@@ -33,14 +29,18 @@ let pendingUpdate = null;
 // GitHub URL helpers
 // -------------------------
 
-function getGitHubFileUrl(filePath) {
+function getGitHubFileUrl(filePath, settings) {
     const encodedPath = filePath
         .split("/")
         .map(encodeURIComponent)
         .join("/");
 
-    return `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${encodedPath}`;
+    const owner = encodeURIComponent(settings.repoOwner);
+    const repo = encodeURIComponent(settings.repoName);
+
+    return `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
 }
+
 
 // -------------------------
 // Code comparison helpers
@@ -86,9 +86,12 @@ async function readResponse(response) {
 }
 
 
-async function checkRepositoryAccess(token) {
+async function checkRepositoryAccess(token, settings) {
+    const owner = encodeURIComponent(settings.repoOwner);
+    const repo = encodeURIComponent(settings.repoName);
+
     const response = await fetch(
-        `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`,
+        `https://api.github.com/repos/${owner}/${repo}`,
         {
             headers: {
                 Authorization: `Bearer ${token}`,
@@ -99,6 +102,7 @@ async function checkRepositoryAccess(token) {
 
     await readResponse(response);
 }
+
 
 // -------------------------
 // Sync history
@@ -386,12 +390,9 @@ async function getExistingFile(fileUrl, token) {
 // Display safe-update preview
 // -------------------------
 
-function showUpdateReview(problem, filePath, fileUrl, token, existingFile) {
+function showUpdateReview(attempt, existingFile) {
     pendingUpdate = {
-        problem,
-        filePath,
-        fileUrl,
-        token,
+        attempt,
         existingFile
     };
 
@@ -420,14 +421,20 @@ function hideUpdateReview() {
 // -------------------------
 
 async function uploadSolution(attempt, existingFile) {
-    const { problem, filePath, fileUrl, token } = attempt;
+        const {
+        problem,
+        filePath,
+        fileUrl,
+        token,
+        settings
+    } = attempt;
 
     const uploadData = {
         message: existingFile
             ? `Update solution: ${problem.title}`
             : `Add solution: ${problem.title}`,
         content: encodeBase64(problem.code),
-        branch: BRANCH
+        branch: settings.repoBranch
     };
 
     if (existingFile) {
@@ -473,6 +480,7 @@ syncButton.addEventListener("click", async () => {
     statusElement.textContent = "Reading GFG solution...";
 
     try {
+        
         const tokenData = await chrome.storage.local.get(["githubToken"]);
         const token = tokenData.githubToken;
 
@@ -480,8 +488,39 @@ syncButton.addEventListener("click", async () => {
             throw new Error("Save your GitHub token first.");
         }
 
+        const settingsData = await chrome.storage.local.get(["repoSettings"]);
+
+        const settings = {
+            ...DEFAULT_SETTINGS,
+            ...(settingsData.repoSettings || {})
+        };
+
+        if (
+            !settings.repoOwner ||
+            !settings.repoName ||
+            !settings.repoBranch
+        ) {
+            throw new Error(
+                "Please configure your GitHub repository settings first."
+            );
+        }
+
+        settings.repoFolder = (settings.repoFolder || "")
+            .trim()
+            .replace(/^\/+|\/+$/g, "");
+
+        if (
+            settings.repoFolder &&
+            settings.repoFolder.split("/").some(
+                part => !part || part === "." || part === ".."
+            )
+        ) {
+            throw new Error("Please enter a valid destination folder.");
+        }
+
         statusElement.textContent = "Checking repository access...";
-        await checkRepositoryAccess(token);
+        await checkRepositoryAccess(token, settings);
+
 
         const [tab] = await chrome.tabs.query({
             active: true,
@@ -513,14 +552,18 @@ syncButton.addEventListener("click", async () => {
             .replace(/[^a-zA-Z0-9]+/g, "-")
             .replace(/^-|-$/g, "") + ".cpp";
 
-        const filePath = "GFG/" + fileName;
-        const fileUrl = getGitHubFileUrl(filePath);
+        const filePath = settings.repoFolder
+        ? `${settings.repoFolder}/${fileName}`
+        : fileName;
+
+        const fileUrl = getGitHubFileUrl(filePath, settings);
 
         attempt = {
             problem,
             filePath,
             fileUrl,
-            token
+            token,
+            settings
         };
 
         statusElement.textContent = "Checking existing GitHub solution...";
@@ -546,13 +589,7 @@ syncButton.addEventListener("click", async () => {
                 return;
             }
 
-            showUpdateReview(
-                problem,
-                filePath,
-                fileUrl,
-                token,
-                existingFile
-            );
+            showUpdateReview(attempt, existingFile);
 
             return;
         }

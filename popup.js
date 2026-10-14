@@ -286,6 +286,33 @@ async function extractProblem(tab) {
         func: () => {
             let code = "";
             let source = "";
+                    
+        function detectLanguage() {
+            const selectedOption = document.querySelector(
+                ".problems_language_dropdown__DgjFb [role='option'][aria-checked='true']"
+            );
+
+            const languageText = selectedOption?.innerText
+                ?.trim()
+                .toLowerCase();
+
+            if (!languageText) {
+                return "unknown";
+            }
+
+            if (languageText.includes("c++")) return "cpp";
+            if (languageText.includes("python")) return "python";
+            if (languageText.includes("java") &&
+                !languageText.includes("javascript")) {
+                return "java";
+            }
+            if (languageText.includes("javascript")) return "javascript";
+            if (languageText.includes("typescript")) return "typescript";
+            if (/^c(?:\s|$)/.test(languageText)) return "c";
+
+            return "unknown";
+        }
+
 
             let title = document.title
                 .replace(/\s*[| -]\s*GeeksforGeeks\s*$/i, "")
@@ -342,6 +369,7 @@ async function extractProblem(tab) {
                 title,
                 code,
                 source,
+                language: detectLanguage(),
                 url: window.location.href
             };
         }
@@ -390,11 +418,14 @@ async function getExistingFile(fileUrl, token) {
 // Display safe-update preview
 // -------------------------
 
+
 function showUpdateReview(attempt, existingFile) {
     pendingUpdate = {
-        attempt,
+        ...attempt,
         existingFile
     };
+
+    const { problem, filePath } = attempt;
 
     reviewDescription.textContent =
         `A file named "${filePath}" already exists. ` +
@@ -409,6 +440,7 @@ function showUpdateReview(attempt, existingFile) {
     statusElement.textContent =
         "Changes detected. Review the code before overwriting.";
 }
+
 
 function hideUpdateReview() {
     pendingUpdate = null;
@@ -535,6 +567,7 @@ syncButton.addEventListener("click", async () => {
         }
 
         const problem = await extractProblem(tab);
+        console.log("Detected language:", problem?.language);
 
         if (!problem?.code?.trim()) {
             throw new Error(
@@ -548,13 +581,54 @@ syncButton.addEventListener("click", async () => {
 
         problemElement.textContent = problem.title;
 
-        const fileName = problem.title
-            .replace(/[^a-zA-Z0-9]+/g, "-")
-            .replace(/^-|-$/g, "") + ".cpp";
+                
+        const languageConfig = {
+            cpp: {
+                folder: "CPP",
+                extension: ".cpp"
+            },
+            python: {
+                folder: "Python",
+                extension: ".py"
+            },
+            java: {
+                folder: "Java",
+                extension: ".java"
+            },
+            javascript: {
+                folder: "JavaScript",
+                extension: ".js"
+            },
+            typescript: {
+                folder: "TypeScript",
+                extension: ".ts"
+            },
+            c: {
+                folder: "C",
+                extension: ".c"
+            }
+        };
 
-        const filePath = settings.repoFolder
-        ? `${settings.repoFolder}/${fileName}`
-        : fileName;
+        const language = problem.language;
+        const config = languageConfig[language];
+
+        if (!config) {
+            statusElement.textContent =
+                `Unsupported or undetected language: ${language}`;
+            return;
+        }
+
+        const fileName =
+            problem.title
+                .replace(/[^a-zA-Z0-9]+/g, "-")
+                .replace(/^-|-$/g, "") +
+            config.extension;
+
+        const filePath = [
+            settings.repoFolder,
+            config.folder,
+            fileName
+        ].filter(Boolean).join("/");
 
         const fileUrl = getGitHubFileUrl(filePath, settings);
 
@@ -565,6 +639,7 @@ syncButton.addEventListener("click", async () => {
             token,
             settings
         };
+
 
         statusElement.textContent = "Checking existing GitHub solution...";
 

@@ -24,10 +24,22 @@ const settingsStatus = document.getElementById("settingsStatus");
 const HISTORY_LIMIT = 50;
 
 let pendingUpdate = null;
+let pendingUpdates = [];
+let pendingUpdateIndex = 0;
 
+let activeSyncSummary = null;
 // -------------------------
 // GitHub URL helpers
 // -------------------------
+
+
+function normalizeTopicTag(tag) {
+    return tag
+        .trim()
+        .replace(/[^a-zA-Z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+}
+
 
 function getGitHubFileUrl(filePath, settings) {
     const encodedPath = filePath
@@ -365,13 +377,70 @@ async function extractProblem(tab) {
                     || "Unknown problem";
             }
 
+            
+            const topicTags = (() => {
+                const elements = [
+                    ...document.querySelectorAll(
+                        "h1, h2, h3, h4, h5, h6, div, span, p"
+                    )
+                ];
+
+                const heading = elements.find(element =>
+                    element.children.length < 3 &&
+                    element.innerText?.trim() === "Topic Tags"
+                );
+
+                if (!heading) {
+                    return [];
+                }
+
+                // Search nearby containers for tag-like elements.
+                let container = heading.parentElement;
+
+                for (let level = 0; level < 4 && container; level++) {
+                    const candidates = [
+                        ...container.querySelectorAll(
+                            "a, button, [class*='tag'], [class*='chip']"
+                        )
+                    ];
+
+                    const tags = candidates
+                        .filter(element => {
+                            const text = element.innerText?.trim();
+
+                            return (
+                                text &&
+                                text !== "Topic Tags" &&
+                                text.length < 80 &&
+                                element.children.length < 4
+                            );
+                        })
+                        .map(element => element.innerText.trim())
+                        .filter((tag, index, all) =>
+                            all.indexOf(tag) === index
+                        );
+
+                    if (tags.length > 0) {
+                        return tags;
+                    }
+
+                    container = container.parentElement;
+                }
+
+                return [];
+            })();
+
+            console.log("Detected GFG topic tags:", topicTags);
+
             return {
                 title,
                 code,
                 source,
                 language: detectLanguage(),
+                topicTags,
                 url: window.location.href
             };
+
         }
     });
 
@@ -419,6 +488,7 @@ async function getExistingFile(fileUrl, token) {
 // -------------------------
 
 
+
 function showUpdateReview(attempt, existingFile) {
     pendingUpdate = {
         ...attempt,
@@ -428,8 +498,9 @@ function showUpdateReview(attempt, existingFile) {
     const { problem, filePath } = attempt;
 
     reviewDescription.textContent =
-        `A file named "${filePath}" already exists. ` +
-        "Compare the versions before confirming the overwrite.";
+        `File "${filePath}" already exists. ` +
+        `Review file ${pendingUpdateIndex + 1} of ${pendingUpdates.length} ` +
+        "before confirming the overwrite.";
 
     existingCodeElement.textContent = existingFile.content;
     newCodeElement.textContent = problem.code;
@@ -441,12 +512,49 @@ function showUpdateReview(attempt, existingFile) {
         "Changes detected. Review the code before overwriting.";
 }
 
+function showNextPendingUpdate() {
+    if (pendingUpdateIndex >= pendingUpdates.length) {
+        finishPendingReviews();
+        return;
+    }
+
+    const next = pendingUpdates[pendingUpdateIndex];
+
+    showUpdateReview(next, next.existingFile);
+}
 
 function hideUpdateReview() {
     pendingUpdate = null;
     updateReview.hidden = true;
     syncButton.disabled = false;
 }
+
+function finishPendingReviews() {
+    const summary = activeSyncSummary;
+
+    pendingUpdate = null;
+    pendingUpdates = [];
+    pendingUpdateIndex = 0;
+    updateReview.hidden = true;
+    syncButton.disabled = false;
+
+    if (!summary) {
+        statusElement.textContent = "Sync review finished.";
+        return;
+    }
+
+    const parts = [
+        `Uploaded: ${summary.uploaded}`,
+        `Unchanged: ${summary.unchanged}`,
+        `Failed: ${summary.failed}`,
+        `Cancelled: ${summary.cancelled}`
+    ];
+
+    statusElement.textContent = "Sync finished. " + parts.join(" | ");
+
+    activeSyncSummary = null;
+}
+
 
 // -------------------------
 // Upload new or confirmed solution
@@ -568,6 +676,14 @@ syncButton.addEventListener("click", async () => {
 
         const problem = await extractProblem(tab);
         console.log("Detected language:", problem?.language);
+        console.log("Tags received by sync:", problem?.topicTags);
+
+        console.log(
+            "Normalized topic folders:",
+            (problem?.topicTags || [])
+                .map(normalizeTopicTag)
+                .filter(Boolean)
+        );
 
         if (!problem?.code?.trim()) {
             throw new Error(
@@ -618,59 +734,130 @@ syncButton.addEventListener("click", async () => {
             return;
         }
 
+        
         const fileName =
             problem.title
                 .replace(/[^a-zA-Z0-9]+/g, "-")
                 .replace(/^-|-$/g, "") +
             config.extension;
 
-        const filePath = [
-            settings.repoFolder,
-            config.folder,
-            fileName
-        ].filter(Boolean).join("/");
+        const topicTags = [
+            ...new Set(
+                (problem.topicTags || [])
+                    .map(normalizeTopicTag)
+                    .filter(Boolean)
+            )
+        ];
 
-        const fileUrl = getGitHubFileUrl(filePath, settings);
+        const topics = topicTags.length > 0
+            ? topicTags
+            : ["Other"];
 
-        attempt = {
-            problem,
-            filePath,
-            fileUrl,
-            token,
-            settings
+        const destinations = topics.map(topic => {
+            const filePath = [
+                settings.repoFolder,
+                topic,
+                config.folder,
+                fileName
+            ].filter(Boolean).join("/");
+
+            return {
+                filePath,
+                fileUrl: getGitHubFileUrl(filePath, settings)
+            };
+        });
+
+        console.log("GitHub destinations:", destinations);
+
+        // Temporary test: display the planned destinations.
+        // statusElement.textContent =
+        //     `Found ${destinations.length} topic destination(s). Check the console.`;
+
+        // return;
+
+
+
+        
+        activeSyncSummary = {
+            uploaded: 0,
+            unchanged: 0,
+            failed: 0,
+            cancelled: 0,
+            failedPaths: []
         };
 
+        pendingUpdates = [];
+        pendingUpdateIndex = 0;
 
-        statusElement.textContent = "Checking existing GitHub solution...";
+        for (const destination of destinations) {
+            const attemptForFile = {
+                problem,
+                filePath: destination.filePath,
+                fileUrl: destination.fileUrl,
+                token,
+                settings
+            };
 
-        const existingFile = await getExistingFile(fileUrl, token);
+            try {
+                statusElement.textContent =
+                    `Checking ${destination.filePath}...`;
 
-        if (existingFile) {
-            const oldCode = normalizeCode(existingFile.content);
-            const newCode = normalizeCode(problem.code);
+                const existingFile = await getExistingFile(
+                    destination.fileUrl,
+                    token
+                );
 
-            if (oldCode === newCode) {
+                if (!existingFile) {
+                    await uploadSolution(attemptForFile, null);
+                    activeSyncSummary.uploaded++;
+                    continue;
+                }
+
+                const oldCode = normalizeCode(existingFile.content);
+                const newCode = normalizeCode(problem.code);
+
+                if (oldCode === newCode) {
+                    await recordHistory({
+                        title: problem.title,
+                        filePath: destination.filePath,
+                        status: "unchanged",
+                        url: existingFile.url,
+                        source: problem.source,
+                        message: "No changes detected. Commit skipped."
+                    });
+
+                    activeSyncSummary.unchanged++;
+                    continue;
+                }
+
+                pendingUpdates.push({
+                    ...attemptForFile,
+                    existingFile
+                });
+            } catch (error) {
+                console.error(
+                    `Sync failed for ${destination.filePath}:`,
+                    error
+                );
+
+                activeSyncSummary.failed++;
+
                 await recordHistory({
                     title: problem.title,
-                    filePath,
-                    status: "unchanged",
-                    url: existingFile.url,
-                    source: problem.source,
-                    message: "No changes detected. Commit skipped."
+                    filePath: destination.filePath,
+                    status: "failed",
+                    message: error.message
                 });
-
-                statusElement.textContent =
-                    "Solution is unchanged. No upload needed.";
-                return;
             }
+        }
 
-            showUpdateReview(attempt, existingFile);
-
+        if (pendingUpdates.length > 0) {
+            showNextPendingUpdate();
             return;
         }
 
-        statusElement.textContent = "Uploading new solution...";
-        await uploadSolution(attempt, null);
+        finishPendingReviews();
+
 
     } catch (error) {
         statusElement.textContent = "Sync failed: " + error.message;
@@ -691,7 +878,7 @@ syncButton.addEventListener("click", async () => {
         console.error("Sync error:", error);
 
     } finally {
-        syncButton.disabled = Boolean(pendingUpdate);
+        syncButton.disabled = Boolean(pendingUpdate) || pendingUpdates.length > 0;
     }
 });
 
@@ -700,41 +887,45 @@ syncButton.addEventListener("click", async () => {
 // -------------------------
 
 confirmUpdateButton.addEventListener("click", async () => {
-    if (!pendingUpdate) {
-        return;
-    }
+    if (!pendingUpdate) return;
 
     const attempt = pendingUpdate;
-    const existingFile = attempt.existingFile;
+    const filePath = attempt.filePath;
 
     confirmUpdateButton.disabled = true;
     cancelUpdateButton.disabled = true;
-    statusElement.textContent = "Updating GitHub solution...";
+
+    statusElement.textContent = `Updating ${filePath}...`;
 
     try {
-        await uploadSolution(attempt, existingFile);
-        hideUpdateReview();
+        await uploadSolution(attempt, attempt.existingFile);
 
-    } catch (error) {
-        statusElement.textContent =
-            "Update failed: " + error.message;
+        if (activeSyncSummary) {
+            activeSyncSummary.uploaded++;
 
-        try {
-            await recordHistory({
-                title: attempt.problem.title,
-                filePath: attempt.filePath,
-                status: "failed",
-                url: existingFile.url,
-                message: error.message
-            });
-        } catch (historyError) {
-            console.error("Could not save sync history:", historyError);
+            activeSyncSummary.failedPaths =
+                (activeSyncSummary.failedPaths || []).filter(
+                    path => path !== filePath
+                );
         }
 
-        // Keep the review open so the user can inspect the
-        // solution and decide what to do next.
-        console.error("Update error:", error);
+        pendingUpdateIndex++;
+        showNextPendingUpdate();
+    } catch (error) {
+        console.error("Update failed:", error);
 
+        if (activeSyncSummary) {
+            activeSyncSummary.failedPaths =
+                activeSyncSummary.failedPaths || [];
+
+            if (!activeSyncSummary.failedPaths.includes(filePath)) {
+                activeSyncSummary.failedPaths.push(filePath);
+            }
+        }
+
+        statusElement.textContent =
+            `Update failed for ${filePath}: ${error.message}. ` +
+            "You can retry or cancel this file.";
     } finally {
         confirmUpdateButton.disabled = false;
         cancelUpdateButton.disabled = false;
@@ -742,31 +933,28 @@ confirmUpdateButton.addEventListener("click", async () => {
 });
 
 cancelUpdateButton.addEventListener("click", async () => {
-    if (!pendingUpdate) {
-        return;
+    if (!pendingUpdate) return;
+
+    const filePath = pendingUpdate.filePath;
+
+    await recordHistory({
+        title: pendingUpdate.problem.title,
+        filePath,
+        status: "cancelled",
+        message: "Overwrite cancelled by user"
+    });
+
+    if (activeSyncSummary) {
+        activeSyncSummary.cancelled++;
     }
 
-    const attempt = pendingUpdate;
+    pendingUpdateIndex++;
+    showNextPendingUpdate();
 
-    hideUpdateReview();
-
-    try {
-        await recordHistory({
-            title: attempt.problem.title,
-            filePath: attempt.filePath,
-            status: "cancelled",
-            url: attempt.existingFile.url,
-            message: "Overwrite cancelled by user."
-        });
-
-        statusElement.textContent =
-            "Update cancelled. Existing GitHub file was not changed.";
-
-    } catch (error) {
-        statusElement.textContent =
-            "Update cancelled, but history could not be saved.";
-    }
+    statusElement.textContent =
+        `Skipped overwrite for ${filePath}.`;
 });
+
 
 // -------------------------
 // Initialize popup

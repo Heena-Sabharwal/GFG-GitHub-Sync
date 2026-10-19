@@ -378,57 +378,62 @@ async function extractProblem(tab) {
             }
 
             
+                        
             const topicTags = (() => {
-                const elements = [
-                    ...document.querySelectorAll(
-                        "h1, h2, h3, h4, h5, h6, div, span, p"
-                    )
+                const headings = [
+                    ...document.querySelectorAll("h1, h2, h3, h4, h5, h6, div, span, p")
                 ];
 
-                const heading = elements.find(element =>
+                const heading = headings.find(element =>
                     element.children.length < 3 &&
                     element.innerText?.trim() === "Topic Tags"
                 );
 
-                if (!heading) {
-                    return [];
-                }
+                if (!heading) return [];
 
-                // Search nearby containers for tag-like elements.
-                let container = heading.parentElement;
+                let section = heading.parentElement;
 
-                for (let level = 0; level < 4 && container; level++) {
-                    const candidates = [
-                        ...container.querySelectorAll(
-                            "a, button, [class*='tag'], [class*='chip']"
-                        )
-                    ];
+                // Find the smallest parent containing the topic heading
+                // and its associated tag elements.
+                for (let level = 0; level < 4 && section; level++) {
+                    const text = section.innerText || "";
 
-                    const tags = candidates
-                        .filter(element => {
-                            const text = element.innerText?.trim();
-
-                            return (
-                                text &&
-                                text !== "Topic Tags" &&
-                                text.length < 80 &&
-                                element.children.length < 4
-                            );
-                        })
-                        .map(element => element.innerText.trim())
-                        .filter((tag, index, all) =>
-                            all.indexOf(tag) === index
+                    if (text.includes("Topic Tags")) {
+                        const nextHeading = [
+                            ...section.querySelectorAll("h1, h2, h3, h4, h5, h6, div, span, p")
+                        ].find(element =>
+                            element !== heading &&
+                            element.innerText?.trim() === "Company Tags"
                         );
 
-                    if (tags.length > 0) {
-                        return tags;
+                        if (nextHeading) {
+                            section = heading.parentElement;
+                            break;
+                        }
                     }
 
-                    container = container.parentElement;
+                    section = section.parentElement;
                 }
 
-                return [];
+                const parent = heading.parentElement;
+                if (!parent) return [];
+
+                const candidates = [
+                    ...parent.querySelectorAll("a, button, [class*='tag'], [class*='chip']")
+                ];
+
+                return [...new Set(
+                    candidates
+                        .map(element => element.innerText?.trim())
+                        .filter(tag =>
+                            tag &&
+                            tag !== "Topic Tags" &&
+                            tag !== "Company Tags" &&
+                            tag.length < 80
+                        )
+                )];
             })();
+
 
             console.log("Detected GFG topic tags:", topicTags);
 

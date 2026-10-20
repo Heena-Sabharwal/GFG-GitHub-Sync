@@ -378,61 +378,40 @@ async function extractProblem(tab) {
             }
 
             
-                        
-            const topicTags = (() => {
-                const headings = [
-                    ...document.querySelectorAll("h1, h2, h3, h4, h5, h6, div, span, p")
-                ];
+                                
+                                
+                                
+                    
+        const topicTags = (() => {
+            const sections = [
+                ...document.querySelectorAll(
+                    '[class*="problems_accordion_tags__"]'
+                )
+            ];
 
-                const heading = headings.find(element =>
-                    element.children.length < 3 &&
-                    element.innerText?.trim() === "Topic Tags"
-                );
+            const topicSection = sections.find(section =>
+                section.querySelector("strong")
+                    ?.textContent.trim() === "Topic Tags"
+            );
 
-                if (!heading) return [];
+            if (!topicSection) {
+                console.warn("Topic Tags section not found.");
+                return [];
+            }
 
-                let section = heading.parentElement;
+            const tags = [
+                ...topicSection.querySelectorAll("a")
+            ]
+                .map(link => link.textContent.trim())
+                .filter(Boolean);
 
-                // Find the smallest parent containing the topic heading
-                // and its associated tag elements.
-                for (let level = 0; level < 4 && section; level++) {
-                    const text = section.innerText || "";
+            console.log("Detected GFG topic tags:", tags);
 
-                    if (text.includes("Topic Tags")) {
-                        const nextHeading = [
-                            ...section.querySelectorAll("h1, h2, h3, h4, h5, h6, div, span, p")
-                        ].find(element =>
-                            element !== heading &&
-                            element.innerText?.trim() === "Company Tags"
-                        );
+            return [...new Set(tags)];
+        })();
 
-                        if (nextHeading) {
-                            section = heading.parentElement;
-                            break;
-                        }
-                    }
 
-                    section = section.parentElement;
-                }
 
-                const parent = heading.parentElement;
-                if (!parent) return [];
-
-                const candidates = [
-                    ...parent.querySelectorAll("a, button, [class*='tag'], [class*='chip']")
-                ];
-
-                return [...new Set(
-                    candidates
-                        .map(element => element.innerText?.trim())
-                        .filter(tag =>
-                            tag &&
-                            tag !== "Topic Tags" &&
-                            tag !== "Company Tags" &&
-                            tag.length < 80
-                        )
-                )];
-            })();
 
 
             console.log("Detected GFG topic tags:", topicTags);
@@ -548,12 +527,17 @@ function finishPendingReviews() {
         return;
     }
 
+    
+    const failedCount =
+        summary.failed + (summary.failedPaths || []).length;
+
     const parts = [
         `Uploaded: ${summary.uploaded}`,
         `Unchanged: ${summary.unchanged}`,
-        `Failed: ${summary.failed}`,
+        `Failed: ${failedCount}`,
         `Cancelled: ${summary.cancelled}`
     ];
+
 
     statusElement.textContent = "Sync finished. " + parts.join(" | ");
 
@@ -891,6 +875,7 @@ syncButton.addEventListener("click", async () => {
 // Confirm or cancel overwrite
 // -------------------------
 
+
 confirmUpdateButton.addEventListener("click", async () => {
     if (!pendingUpdate) return;
 
@@ -915,7 +900,11 @@ confirmUpdateButton.addEventListener("click", async () => {
         }
 
         pendingUpdateIndex++;
+
+        // Shows the next review, or closes the panel and shows
+        // the final sync summary when no reviews remain.
         showNextPendingUpdate();
+
     } catch (error) {
         console.error("Update failed:", error);
 
@@ -930,12 +919,14 @@ confirmUpdateButton.addEventListener("click", async () => {
 
         statusElement.textContent =
             `Update failed for ${filePath}: ${error.message}. ` +
-            "You can retry or cancel this file.";
+            "The review is still open. You can retry or cancel.";
+
     } finally {
         confirmUpdateButton.disabled = false;
         cancelUpdateButton.disabled = false;
     }
 });
+
 
 cancelUpdateButton.addEventListener("click", async () => {
     if (!pendingUpdate) return;
@@ -956,8 +947,8 @@ cancelUpdateButton.addEventListener("click", async () => {
     pendingUpdateIndex++;
     showNextPendingUpdate();
 
-    statusElement.textContent =
-        `Skipped overwrite for ${filePath}.`;
+    // statusElement.textContent =
+    //     `Skipped overwrite for ${filePath}.`;
 });
 
 

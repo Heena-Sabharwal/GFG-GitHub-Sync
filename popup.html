@@ -5,6 +5,101 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GFG GitHub Sync</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+    <h2>GFG → GitHub</h2>
+
+    <p id="problem">Open a GeeksforGeeks problem page.</p>
+
+    <label for="token">GitHub Personal Access Token</label>
+    <input
+        type="password"
+        id="token"
+        placeholder="Paste GitHub token"
+        autocomplete="off"
+    >
+
+    <button id="saveToken">Save Token</button>
+    
+    <hr>
+
+    <h3>GitHub Repository Settings</h3>
+
+    <label for="repoOwner">GitHub Username / Owner</label>
+    <input
+        type="text"
+        id="repoOwner"
+        placeholder="Your GitHub username"
+    />
+
+    <label for="repoName">Repository Name</label>
+    <input
+        type="text"
+        id="repoName"
+        placeholder="Your repository name"
+    />
+
+    <label for="repoBranch">Branch</label>
+    <input
+        type="text"
+        id="repoBranch"
+        placeholder="main"
+    />
+
+    <label for="repoFolder">Destination Folder</label>
+    <input
+        type="text"
+        id="repoFolder"
+        placeholder="GFG"
+    />
+
+    <button id="saveSettings">Save Settings</button>
+
+    <p id="settingsStatus"></p>
+
+    <hr>
+
+    <button id="syncButton">Sync to GitHub</button>
+
+    <p id="status" role="status" aria-live="polite"></p>
+
+    <section id="updateReview" hidden>
+        <h3>Review solution update</h3>
+        <p id="reviewDescription"></p>
+
+        <strong>Existing GitHub code</strong>
+        <pre id="existingCode"></pre>
+
+        <strong>New GFG code</strong>
+        <pre id="newCode"></pre>
+
+        <button id="confirmUpdate" class="danger">
+            Confirm Overwrite
+        </button>
+
+        <button id="cancelUpdate" class="secondary">
+            Cancel
+        </button>
+    </section>
+
+    <section>
+        <h3>Recent Sync History</h3>
+        <div id="history">
+            <p class="muted">No sync history yet.</p>
+        </div>
+    </section>
+
+    <script src="popup.js"></script>
+</body>
+</html>
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GFG GitHub Sync</title>
 
     <style>
         body {
@@ -200,4 +295,4 @@
 
     <script src="popup.js"></script>
 </body>
-</html>
+</html> -->

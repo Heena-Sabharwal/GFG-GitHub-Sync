@@ -1,4 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GFG GitHub Sync</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="app-shell">
+        <header class="app-header">
+            <div class="brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M5 7.5 12 4l7 3.5v9L12 20l-7-3.5v-9Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m8.5 10 3.5 2 3.5-2M12 12v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            </div>
+            <div class="brand-copy">
+                <p class="eyebrow">GFG WORKFLOW</p>
+                <h1>GitHub Sync</h1>
+            </div>
+            <span class="connection-dot" title="Extension ready" aria-label="Extension ready"></span>
+        </header>
 
+        <main>
+            <section class="tab-panel is-active" id="homePanel" data-panel="home" aria-labelledby="homeHeading">
+                <div class="welcome-row">
+                    <div>
+                        <p class="eyebrow">YOUR SOLUTION, SAFELY STORED</p>
+                        <h2 id="homeHeading">Ready when you are.</h2>
+                    </div>
+                    <div class="hero-icon" aria-hidden="true">↗</div>
+                </div>
+
+                <article class="problem-card">
+                    <div class="card-label-row">
+                        <span class="status-pip"></span>
+                        <span class="card-label">CURRENT PROBLEM</span>
+                    </div>
+                    <p id="problem">Open a GeeksforGeeks problem page.</p>
+                    <div class="topic-area">
+                        <span class="micro-label">TOPIC TAGS</span>
+                        <div id="topicChips" class="topic-chips">
+                            <span class="topic-placeholder">Detected automatically during sync</span>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="status-card">
+                    <div class="status-card-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3.5 19 6v5.4c0 4.3-2.9 7.4-7 9.1-4.1-1.7-7-4.8-7-9.1V6l7-2.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </div>
+                    <div class="status-card-copy">
+                        <strong>Sync status</strong>
+                        <p id="status" role="status" aria-live="polite">Ready to sync your solution.</p>
+                    </div>
+                </article>
+
+                <button id="syncButton" class="primary-button">
+                    <span aria-hidden="true">↑</span> Sync to GitHub
+                </button>
+                <p class="helper-text" id="homeHint">Your code is reviewed before an existing file is overwritten.</p>
+
+                <section class="activity-preview" aria-labelledby="activityHeading">
+                    <div class="section-heading-row">
+                        <div>
+                            <p class="eyebrow">LATEST ACTIONS</p>
+                            <h3 id="activityHeading">Sync activity</h3>
+                        </div>
+                        <button type="button" class="text-button" data-open-tab="history">View all</button>
+                    </div>
+                    <div id="homeActivity" class="home-activity">
+                        <span class="activity-empty-icon" aria-hidden="true">◷</span>
+                        <p>Your recent syncs will show up here.</p>
+                    </div>
+                </section>
+
+                <section id="updateReview" class="review-card" hidden>
+                    <div class="review-heading">
+                        <span class="review-symbol" aria-hidden="true">!</span>
+                        <div>
+                            <p class="eyebrow">CONFIRM BEFORE CHANGING GITHUB</p>
+                            <h3>Review solution update</h3>
+                        </div>
+                    </div>
+                    <p id="reviewDescription"></p>
+                    <strong class="code-label">Existing GitHub code</strong>
+                    <pre id="existingCode"></pre>
+                    <strong class="code-label">New GFG code</strong>
+                    <pre id="newCode"></pre>
+                    <button id="confirmUpdate" class="danger-button">Confirm Overwrite</button>
+                    <button id="cancelUpdate" class="secondary-button">Cancel</button>
+                </section>
+            </section>
+
+            <section class="tab-panel" id="historyPanel" data-panel="history" aria-labelledby="historyHeading" hidden>
+                <div class="page-heading">
+                    <p class="eyebrow">YOUR REPOSITORY TRAIL</p>
+                    <h2 id="historyHeading">Sync history</h2>
+                    <p class="page-description">A record of the solutions you’ve synced and where they landed.</p>
+                </div>
+                <div class="history-card">
+                    <div id="history">
+                        <p class="muted">No sync history yet.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="tab-panel" id="settingsPanel" data-panel="settings" aria-labelledby="settingsHeading" hidden>
+                <div class="page-heading">
+                    <p class="eyebrow">MAKE IT YOURS</p>
+                    <h2 id="settingsHeading">Settings</h2>
+                    <p class="page-description">Connect your GitHub account and choose where solutions should go.</p>
+                </div>
+
+                <section class="settings-card">
+                    <div class="settings-section-heading">
+                        <span class="settings-icon" aria-hidden="true">⌘</span>
+                        <div><h3>GitHub access</h3><p>Your token stays in local extension storage.</p></div>
+                    </div>
+                    <label for="token">Personal access token</label>
+                    <input type="password" id="token" placeholder="Paste GitHub token" autocomplete="off">
+                    <button id="saveToken" class="secondary-button">Save Token</button>
+                </section>
+
+                <section class="settings-card">
+                    <div class="settings-section-heading">
+                        <span class="settings-icon" aria-hidden="true">⌂</span>
+                        <div><h3>Repository destination</h3><p>Set the repository and base folder for your solutions.</p></div>
+                    </div>
+                    <label for="repoOwner">GitHub username / owner</label>
+                    <input type="text" id="repoOwner" placeholder="Your GitHub username" autocomplete="off">
+
+                    <label for="repoName">Repository name</label>
+                    <input type="text" id="repoName" placeholder="Your repository name" autocomplete="off">
+
+                    <label for="repoBranch">Branch</label>
+                    <input type="text" id="repoBranch" placeholder="main" autocomplete="off">
+
+                    <label for="repoFolder">Destination folder</label>
+                    <input type="text" id="repoFolder" placeholder="GFG" autocomplete="off">
+
+                    <button id="saveSettings" class="primary-button">Save Settings</button>
+                    <p id="settingsStatus" class="inline-feedback" role="status" aria-live="polite"></p>
+                </section>
+                <p class="settings-footnote">Topic folders and language folders are organized automatically during sync.</p>
+            </section>
+        </main>
+
+        <nav class="bottom-nav" aria-label="Main navigation">
+            <button type="button" class="nav-item is-active" data-open-tab="home" aria-current="page">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m3.8 10.5 8.2-7 8.2 7v9a1 1 0 0 1-1 1h-5.1v-6h-4.2v6H4.8a1 1 0 0 1-1-1v-9Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+                <span>Home</span>
+            </button>
+            <button type="button" class="nav-item" data-open-tab="history">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5.5h16v14H4zM8 3.5v4M16 3.5v4M4 9.5h16M8 13h3M8 16h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span>History</span>
+            </button>
+            <button type="button" class="nav-item" data-open-tab="settings">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" stroke="currentColor" stroke-width="1.7"/><path d="m19.2 13.5 1.1.8-1.1 1.9-1.3-.5a7.6 7.6 0 0 1-1.7 1l-.2 1.4h-2.2l-.4-1.3a7.7 7.7 0 0 1-2.1 0l-.7 1.1-2-.9.2-1.4a7.4 7.4 0 0 1-1.5-1.4l-1.4.2-.8-2 1.1-.8a7.5 7.5 0 0 1-.1-2l-1.1-.8.9-2 1.4.2a7.4 7.4 0 0 1 1.5-1.4l-.2-1.4 2-.9.7 1.1a7.7 7.7 0 0 1 2.1 0l.4-1.3h2.2l.2 1.4a7.6 7.6 0 0 1 1.7 1l1.3-.5 1.1 1.9-1.1.8a7.5 7.5 0 0 1 .1 2Z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+                <span>Settings</span>
+            </button>
+        </nav>
+    </div>
+    <script src="popup-ui.js"></script>
+    <script src="popup.js"></script>
+</body>
+</html>
+
+
+<!-- 
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -93,7 +260,7 @@
 
     <script src="popup.js"></script>
 </body>
-</html>
+</html> -->
 <!-- <!DOCTYPE html>
 <html lang="en">
 <head>

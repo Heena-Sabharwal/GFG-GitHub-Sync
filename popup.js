@@ -139,6 +139,40 @@ async function recordHistory(entry) {
     await renderHistory();
 }
 
+function renderHomeActivity(history) {
+    const activityElement = document.getElementById("homeActivity");
+    if (!activityElement) return;
+
+    activityElement.replaceChildren();
+    const latest = history[0];
+    if (!latest) {
+        const icon = document.createElement("span");
+        icon.className = "activity-empty-icon";
+        icon.setAttribute("aria-hidden", "true");
+        icon.textContent = "◷";
+
+        const message = document.createElement("p");
+        message.textContent = "Your recent syncs will show up here.";
+        activityElement.append(icon, message);
+        return;
+    }
+
+    const icon = document.createElement("span");
+    icon.className = "activity-empty-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = latest.status && /fail|error/i.test(latest.status) ? "!" : "✓";
+
+    const copy = document.createElement("div");
+    copy.className = "activity-copy";
+    const title = document.createElement("strong");
+    title.textContent = latest.title || "Unknown problem";
+    const details = document.createElement("p");
+    const timestamp = latest.timestamp ? new Date(latest.timestamp).toLocaleString() : "Recent activity";
+    details.textContent = `${latest.status || "Sync recorded"} · ${timestamp}`;
+    copy.append(title, details);
+    activityElement.append(icon, copy);
+}
+
 async function renderHistory() {
     const result = await chrome.storage.local.get(["syncHistory"]);
     const history = Array.isArray(result.syncHistory)
@@ -146,6 +180,7 @@ async function renderHistory() {
         : [];
 
     historyElement.replaceChildren();
+    renderHomeActivity(history);
 
     if (history.length === 0) {
         const emptyMessage = document.createElement("p");
@@ -493,7 +528,7 @@ function showUpdateReview(attempt, existingFile) {
     syncButton.disabled = true;
 
     statusElement.textContent =
-        "Changes detected. Review the code before overwriting.";
+        "Changes detected. Scroll down to review the code before overwriting.";
 }
 
 function showNextPendingUpdate() {
@@ -685,6 +720,25 @@ syncButton.addEventListener("click", async () => {
         }
 
         problemElement.textContent = problem.title;
+
+        const topicChipsElement = document.getElementById("topicChips");
+        if (topicChipsElement) {
+            topicChipsElement.replaceChildren();
+            const displayTags = [...new Set((problem.topicTags || []).filter(Boolean))];
+            if (displayTags.length === 0) {
+                const placeholder = document.createElement("span");
+                placeholder.className = "topic-placeholder";
+                placeholder.textContent = "No topic tags detected";
+                topicChipsElement.appendChild(placeholder);
+            } else {
+                for (const tag of displayTags) {
+                    const chip = document.createElement("span");
+                    chip.className = "topic-chip";
+                    chip.textContent = tag;
+                    topicChipsElement.appendChild(chip);
+                }
+            }
+        }
 
                 
         const languageConfig = {
